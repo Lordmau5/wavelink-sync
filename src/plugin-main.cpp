@@ -18,12 +18,21 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 
 #include <obs-module.h>
 #include <plugin-support.h>
+#include <websocket.hpp>
 
 OBS_DECLARE_MODULE()
 OBS_MODULE_USE_DEFAULT_LOCALE(PLUGIN_NAME, "en-US")
 
+extern struct obs_source_info create_audio_filter_info();
+struct obs_source_info audio_filter_info;
+
 bool obs_module_load(void)
 {
+	WebSocketHandler::initialize();
+
+	audio_filter_info = create_audio_filter_info();
+	obs_register_source(&audio_filter_info);
+
 	obs_log(LOG_INFO, "plugin loaded successfully (version %s)", PLUGIN_VERSION);
 	return true;
 }

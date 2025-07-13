@@ -34,6 +34,15 @@ if(ENABLE_QT)
   )
 endif()
 
-target_sources(${CMAKE_PROJECT_NAME} PRIVATE src/plugin-main.c)
+include(cmake/nlohmannJSON.cmake)
+include(cmake/ixwebsocket.cmake)
+target_link_libraries(${CMAKE_PROJECT_NAME} PUBLIC nlohmann_json ixwebsocket)
+
+target_sources(${CMAKE_PROJECT_NAME} PRIVATE
+    src/plugin-main.cpp
+    src/audio-filter.cpp
+    src/audio-filter.h
+    src/websocket.hpp
+)
 
 set_target_properties_plugin(${CMAKE_PROJECT_NAME} PROPERTIES OUTPUT_NAME ${_name})
