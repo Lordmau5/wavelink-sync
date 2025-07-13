@@ -12,18 +12,8 @@ typedef struct {
 	float db;
 } volume_map_t;
 
-static const volume_map_t volume_curve[] = {
-	{0, -100.0f},
-	{1, -39.3f},
-	{5, -38.0f},
-	{15, -34.3f},
-	{30, -28.2f},
-	{45, -22.5f},
-	{60, -16.3f},
-	{75, -10.2f},
-	{90, -4.2f},
-	{100, 0.0f}
-};
+static const volume_map_t volume_curve[] = {{0, -100.0f}, {1, -39.3f},  {5, -38.0f},  {15, -34.3f}, {30, -28.2f},
+					    {45, -22.5f}, {60, -16.3f}, {75, -10.2f}, {90, -4.2f},  {100, 0.0f}};
 #define VOLUME_CURVE_SIZE (sizeof(volume_curve) / sizeof(volume_map_t))
 
 const char *filter_get_name(void *)
@@ -36,7 +26,9 @@ obs_properties_t *filter_get_properties(void *)
 	obs_log(LOG_DEBUG, "+filter_get_properties(...)");
 	obs_properties_t *props = obs_properties_create();
 
-	obs_property_t* channel_list = obs_properties_add_list(props, "channel", obs_module_text("WaveLinkSync.ChannelSelection"), OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING);
+	obs_property_t *channel_list = obs_properties_add_list(props, "channel",
+							       obs_module_text("WaveLinkSync.ChannelSelection"),
+							       OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING);
 	obs_property_list_add_string(channel_list, "Game", "Wave Link Game");
 	obs_property_list_add_string(channel_list, "Music", "Wave Link Music");
 	obs_property_list_add_string(channel_list, "Browser", "Wave Link Browser");
@@ -46,8 +38,9 @@ obs_properties_t *filter_get_properties(void *)
 	obs_property_list_add_string(channel_list, "Aux 1", "Wave Link Aux 1");
 	obs_property_list_add_string(channel_list, "Aux 2", "Wave Link Aux 2");
 
-	obs_property_t *mixer_list = obs_properties_add_list(props, "mixer_type", obs_module_text("WaveLinkSync.MixerSelection"),
-							       OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
+	obs_property_t *mixer_list = obs_properties_add_list(props, "mixer_type",
+							     obs_module_text("WaveLinkSync.MixerSelection"),
+							     OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
 	obs_property_list_add_int(mixer_list, "Monitor Mix", 1);
 	obs_property_list_add_int(mixer_list, "Stream Mix", 2);
 
@@ -58,7 +51,7 @@ obs_properties_t *filter_get_properties(void *)
 void filter_get_defaults(obs_data_t *defaults)
 {
 	obs_log(LOG_DEBUG, "+filter_get_defaults(...)");
-	
+
 	obs_data_set_default_string(defaults, "channel", "Wave Link Music");
 	obs_data_set_default_int(defaults, "mixer_type", 1);
 
@@ -69,11 +62,11 @@ void filter_update(void *data, obs_data_t *settings)
 {
 	obs_log(LOG_DEBUG, "+filter_update");
 
-	auto filter = (filter_t*)data;
+	auto filter = (filter_t *)data;
 	filter->channels = audio_output_get_channels(obs_get_audio());
 
 	auto channel = obs_data_get_string(settings, "channel");
-	auto mixer_type = (int) obs_data_get_int(settings, "mixer_type");
+	auto mixer_type = (int)obs_data_get_int(settings, "mixer_type");
 
 	filter->channel = std::string(channel);
 	filter->mixer_type = mixer_type;
@@ -126,8 +119,8 @@ float interpolate_volume_db(float percent)
 
 float getCombinedDb(filter_t *filter)
 {
-	float volume = (float) WebSocketHandler::getVolumeForFilter(filter);
-	float mixer_volume = (float) WebSocketHandler::getMixerVolumeForFilter(filter);
+	float volume = (float)WebSocketHandler::getVolumeForFilter(filter);
+	float mixer_volume = (float)WebSocketHandler::getMixerVolumeForFilter(filter);
 
 	float volume_db = interpolate_volume_db(volume);
 	float mixer_volume_db = interpolate_volume_db(mixer_volume);
@@ -135,9 +128,9 @@ float getCombinedDb(filter_t *filter)
 	return obs_db_to_mul(volume_db) * obs_db_to_mul(mixer_volume_db);
 }
 
-obs_audio_data* filter_handle_audio(void* data, obs_audio_data* audio)
+obs_audio_data *filter_handle_audio(void *data, obs_audio_data *audio)
 {
-	auto filter = (filter_t*)data;
+	auto filter = (filter_t *)data;
 	const size_t channels = filter->channels;
 	float **adata = (float **)audio->data;
 	float gain = getCombinedDb(filter);

@@ -12,11 +12,7 @@
 
 #include <audio-filter.h>
 
-enum MixerType {
-	INVALID,
-	LOCAL,
-	STREAM
-};
+enum MixerType { INVALID, LOCAL, STREAM };
 
 struct Input {
 	std::unordered_map<MixerType, bool> muted;
@@ -31,14 +27,15 @@ struct Output {
 class WebSocketHandler {
 private:
 	static inline ix::WebSocket webSocket;
-	static inline std::unordered_map<MixerType, Output*> mixers;
-	static inline std::unordered_map<std::string, Input*> channels;
+	static inline std::unordered_map<MixerType, Output *> mixers;
+	static inline std::unordered_map<std::string, Input *> channels;
 
 	static inline int input_configs_id = 469;
 	static inline int output_config_id = 470;
 
 public:
-	static void initialize() {
+	static void initialize()
+	{
 		srand((unsigned int)time(NULL));
 		input_configs_id = rand() % 420 + 69;
 		output_config_id = rand() % 420 + 69;
@@ -57,11 +54,12 @@ public:
 				handleWebsocketMessage(msg->str);
 			} else if (msg->type == ix::WebSocketMessageType::Open) {
 				obs_log(LOG_INFO, "WebSocket connection established.");
-				
+
 				sendGetInputConfigsMessage();
 				sendGetOutputConfigMessage();
 			} else if (msg->type == ix::WebSocketMessageType::Error) {
-				obs_log(LOG_INFO, "WebSocket connection error: %d, %s", msg->errorInfo.http_status, msg->errorInfo.reason.c_str());
+				obs_log(LOG_INFO, "WebSocket connection error: %d, %s", msg->errorInfo.http_status,
+					msg->errorInfo.reason.c_str());
 			}
 		});
 
@@ -88,7 +86,8 @@ public:
 		webSocket.send(json.dump());
 	}
 
-	static Input* getInput(std::string identifier) {
+	static Input *getInput(std::string identifier)
+	{
 		if (!channels[identifier]) {
 			channels[identifier] = new Input();
 		}
@@ -112,7 +111,7 @@ public:
 		for (auto &json_input : json["result"]) {
 			std::string identifier = json_input["identifier"];
 			obs_log(LOG_INFO, "identifier, %s", identifier.c_str());
-			
+
 			Input *input = getInput(identifier);
 
 			input->muted[MixerType::LOCAL] = json_input["localMixer"][0];
@@ -121,10 +120,9 @@ public:
 			input->muted[MixerType::STREAM] = json_input["streamMixer"][0];
 			input->volume[MixerType::STREAM] = json_input["streamMixer"][1];
 
-			obs_log(LOG_INFO, "input, %d, %d, %d, %d - volumes size: %d",
-				input->muted[MixerType::LOCAL], input->volume[MixerType::LOCAL],
-				input->muted[MixerType::STREAM], input->volume[MixerType::STREAM],
-				channels.size());
+			obs_log(LOG_INFO, "input, %d, %d, %d, %d - volumes size: %d", input->muted[MixerType::LOCAL],
+				input->volume[MixerType::LOCAL], input->muted[MixerType::STREAM],
+				input->volume[MixerType::STREAM], channels.size());
 		}
 	}
 
@@ -182,7 +180,7 @@ public:
 
 		if (method == "outputVolumeChanged") {
 			int volume = params["value"];
-			
+
 			Output *output = getOutput(mixerType);
 
 			output->volume = volume;
@@ -203,7 +201,7 @@ public:
 			int volume = params["value"];
 
 			std::string identifier = params["identifier"];
-			
+
 			updateFilterVolume(identifier, mixerType, volume);
 
 			obs_log(LOG_INFO, "%s, %d, Volume: %d", identifier.c_str(), mixerType, volume);
@@ -245,7 +243,7 @@ public:
 		MixerType mixer_type = static_cast<MixerType>(filter->mixer_type);
 
 		Output *output = getOutput(mixer_type);
-		
+
 		return output->muted ? 0 : output->volume;
 	}
 
