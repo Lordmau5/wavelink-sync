@@ -40,8 +40,6 @@ public:
 		input_configs_id = rand() % 420 + 69;
 		output_config_id = rand() % 420 + 69;
 
-		obs_log(LOG_INFO, "Random numbers, %d, %d", input_configs_id, output_config_id);
-
 		ix::initNetSystem();
 
 		std::string url("ws://localhost:1824");
@@ -58,7 +56,11 @@ public:
 				sendGetInputConfigsMessage();
 				sendGetOutputConfigMessage();
 			} else if (msg->type == ix::WebSocketMessageType::Error) {
-				obs_log(LOG_INFO, "WebSocket connection error: %d, %s", msg->errorInfo.http_status,
+				// Server probably isn't up, fail silently
+				if (msg->errorInfo.http_status == 0)
+					return;
+
+				obs_log(LOG_ERROR, "WebSocket connection error: %d, %s", msg->errorInfo.http_status,
 					msg->errorInfo.reason.c_str());
 			}
 		});
@@ -106,11 +108,10 @@ public:
 
 	static void handleInputConfigs(nlohmann::json json)
 	{
-		obs_log(LOG_INFO, "input configs");
+		obs_log(LOG_DEBUG, "input configs");
 
 		for (auto &json_input : json["result"]) {
 			std::string identifier = json_input["identifier"];
-			obs_log(LOG_INFO, "identifier, %s", identifier.c_str());
 
 			Input *input = getInput(identifier);
 
@@ -120,7 +121,7 @@ public:
 			input->muted[MixerType::STREAM] = json_input["streamMixer"][0];
 			input->volume[MixerType::STREAM] = json_input["streamMixer"][1];
 
-			obs_log(LOG_INFO, "input, %d, %d, %d, %d - volumes size: %d", input->muted[MixerType::LOCAL],
+			obs_log(LOG_DEBUG, "input, %d, %d, %d, %d - volumes size: %d", input->muted[MixerType::LOCAL],
 				input->volume[MixerType::LOCAL], input->muted[MixerType::STREAM],
 				input->volume[MixerType::STREAM], channels.size());
 		}
@@ -128,7 +129,7 @@ public:
 
 	static void handleOutputConfig(nlohmann::json json)
 	{
-		obs_log(LOG_INFO, "output config");
+		obs_log(LOG_DEBUG, "output config");
 
 		auto result = json["result"];
 
@@ -141,7 +142,7 @@ public:
 		streamOutput->muted = result["streamMixer"][0];
 		streamOutput->volume = result["streamMixer"][1];
 
-		obs_log(LOG_INFO, "outputs, %d, %d, %d, %d", localOutput->muted, localOutput->volume,
+		obs_log(LOG_DEBUG, "outputs, %d, %d, %d, %d", localOutput->muted, localOutput->volume,
 			streamOutput->muted, streamOutput->volume);
 	}
 
@@ -185,7 +186,7 @@ public:
 
 			output->volume = volume;
 
-			obs_log(LOG_INFO, "Output, Volume %d", mixerID.c_str(), volume);
+			obs_log(LOG_DEBUG, "Output, Volume %d", mixerID.c_str(), volume);
 		} else if (method == "outputMuteChanged") {
 			bool muted = params["value"];
 
@@ -193,7 +194,7 @@ public:
 
 			output->muted = muted;
 
-			obs_log(LOG_INFO, "Output, %s", mixerID.c_str(), muted ? "Muted" : "Unmuted");
+			obs_log(LOG_DEBUG, "Output, %s", mixerID.c_str(), muted ? "Muted" : "Unmuted");
 		} else if (method == "inputVolumeChanged") {
 			if (!params.contains("identifier"))
 				return;
@@ -204,7 +205,7 @@ public:
 
 			updateFilterVolume(identifier, mixerType, volume);
 
-			obs_log(LOG_INFO, "%s, %d, Volume: %d", identifier.c_str(), mixerType, volume);
+			obs_log(LOG_DEBUG, "%s, %d, Volume: %d", identifier.c_str(), mixerType, volume);
 		} else if (method == "inputMuteChanged") {
 			if (!params.contains("identifier"))
 				return;
@@ -215,7 +216,7 @@ public:
 
 			updateFilterMuted(identifier, mixerType, muted);
 
-			obs_log(LOG_INFO, "%s, %d, %s", identifier.c_str(), mixerType, muted ? "Muted" : "Unmuted");
+			obs_log(LOG_DEBUG, "%s, %d, %s", identifier.c_str(), mixerType, muted ? "Muted" : "Unmuted");
 		}
 	}
 
@@ -224,8 +225,6 @@ public:
 		Input *input = getInput(identifier);
 
 		input->volume[mixer_type] = volume;
-
-		obs_log(LOG_INFO, "volumes size: %d", channels.size());
 	}
 
 	static void updateFilterMuted(std::string identifier, MixerType mixer_type, bool muted)
@@ -233,8 +232,6 @@ public:
 		Input *input = getInput(identifier);
 
 		input->muted[mixer_type] = muted;
-
-		obs_log(LOG_INFO, "volumes size: %d", channels.size());
 	}
 
 	static int getMixerVolumeForFilter(filter_t *filter)
