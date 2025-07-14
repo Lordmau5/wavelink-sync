@@ -12,8 +12,9 @@ typedef struct {
 	float db;
 } volume_map_t;
 
-static const volume_map_t volume_curve[] = {{0, -100.0f}, {1, -39.3f},  {5, -38.0f},  {15, -34.3f}, {30, -28.2f},
-					    {45, -22.5f}, {60, -16.3f}, {75, -10.2f}, {90, -4.2f},  {100, 0.0f}};
+static const volume_map_t volume_curve[] = {{0, -100.0f}, {1, -39.5f},  {5, -38.0f},  {10, -36.0f}, {20, -32.0f},
+					    {30, -28.0f}, {40, -24.0f}, {50, -20.0f}, {60, -16.0f}, {70, -12.0f},
+					    {80, -8.0f},  {90, -4.0f},  {100, 0.0f}};
 #define VOLUME_CURVE_SIZE (sizeof(volume_curve) / sizeof(volume_map_t))
 
 const char *filter_get_name(void *)
@@ -44,6 +45,20 @@ obs_properties_t *filter_get_properties(void *)
 	obs_property_list_add_int(mixer_list, "Monitor Mix", 1);
 	obs_property_list_add_int(mixer_list, "Stream Mix", 2);
 
+	obs_property_t *p;
+
+	// Follow channel mute depending on mixer (Monitor Mix or Stream Mix)
+	p = obs_properties_add_bool(props, "follow_channel_mute", obs_module_text("WaveLinkSync.FollowChannelMute"));
+	obs_property_set_long_description(p, obs_module_text("WaveLinkSync.FollowChannelMute.Description"));
+
+	// Apply mixer volume
+	p = obs_properties_add_bool(props, "apply_mixer_volume", obs_module_text("WaveLinkSync.ApplyMixerVolume"));
+	obs_property_set_long_description(p, obs_module_text("WaveLinkSync.ApplyMixerVolume.Description"));
+
+	// Follow mixer mute
+	p = obs_properties_add_bool(props, "follow_mixer_mute", obs_module_text("WaveLinkSync.FollowMixerMute"));
+	obs_property_set_long_description(p, obs_module_text("WaveLinkSync.FollowMixerMute.Description"));
+
 	obs_log(LOG_DEBUG, "-filter_get_properties(...)");
 	return props;
 }
@@ -54,6 +69,10 @@ void filter_get_defaults(obs_data_t *defaults)
 
 	obs_data_set_default_string(defaults, "channel", "Wave Link Music");
 	obs_data_set_default_int(defaults, "mixer_type", 1);
+
+	obs_data_set_default_bool(defaults, "follow_channel_mute", true);
+	obs_data_set_default_bool(defaults, "apply_mixer_volume", true);
+	obs_data_set_default_bool(defaults, "follow_mixer_mute", true);
 
 	obs_log(LOG_DEBUG, "-filter_get_defaults(...)");
 }
@@ -68,8 +87,16 @@ void filter_update(void *data, obs_data_t *settings)
 	auto channel = obs_data_get_string(settings, "channel");
 	auto mixer_type = (int)obs_data_get_int(settings, "mixer_type");
 
+	auto follow_channel_mute = obs_data_get_bool(settings, "follow_channel_mute");
+	auto apply_mixer_volume = obs_data_get_bool(settings, "apply_mixer_volume");
+	auto follow_mixer_mute = obs_data_get_bool(settings, "follow_mixer_mute");
+
 	filter->channel = std::string(channel);
 	filter->mixer_type = mixer_type;
+
+	filter->follow_channel_mute = follow_channel_mute;
+	filter->apply_mixer_volume = apply_mixer_volume;
+	filter->follow_mixer_mute = follow_mixer_mute;
 
 	obs_log(LOG_DEBUG, "-filter_update");
 }
@@ -119,10 +146,10 @@ float interpolate_volume_db(float percent)
 
 float getCombinedDb(filter_t *filter)
 {
-	float volume = (float)WebSocketHandler::getVolumeForFilter(filter);
+	float channel_volume = (float)WebSocketHandler::getChannelVolumeForFilter(filter);
 	float mixer_volume = (float)WebSocketHandler::getMixerVolumeForFilter(filter);
 
-	float volume_db = interpolate_volume_db(volume);
+	float volume_db = interpolate_volume_db(channel_volume);
 	float mixer_volume_db = interpolate_volume_db(mixer_volume);
 
 	return obs_db_to_mul(volume_db) * obs_db_to_mul(mixer_volume_db);

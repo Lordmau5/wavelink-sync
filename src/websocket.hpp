@@ -239,14 +239,26 @@ public:
 		MixerType mixer_type = static_cast<MixerType>(filter->mixer_type);
 		Output *output = getOutput(mixer_type);
 
-		return output->muted ? 0 : output->volume;
+		if (!filter->apply_mixer_volume) {
+			return 100;
+		}
+
+		if (filter->follow_mixer_mute && output->muted) {
+			return 0;
+		}
+
+		return output->volume;
 	}
 
-	static int getVolumeForFilter(filter_t *filter)
+	static int getChannelVolumeForFilter(filter_t *filter)
 	{
 		Input *input = getInput(filter->channel);
 		MixerType mixer_type = static_cast<MixerType>(filter->mixer_type);
 
-		return input->muted[mixer_type] ? 0 : input->volume[mixer_type];
+		if (filter->follow_channel_mute && input->muted[mixer_type]) {
+			return 0;
+		}
+
+		return input->volume[mixer_type];
 	}
 };
