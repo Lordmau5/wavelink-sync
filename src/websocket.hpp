@@ -70,6 +70,14 @@ public:
 		webSocket.start();
 	}
 
+	static void refreshInputsAndOutputs()
+	{
+		obs_log(LOG_INFO, "Refreshing inputs and outputs");
+
+		sendGetInputConfigsMessage();
+		sendGetOutputConfigMessage();
+	}
+
 	static void sendGetInputConfigsMessage()
 	{
 		auto json = nlohmann::json();
@@ -122,13 +130,19 @@ public:
 	{
 		obs_log(LOG_DEBUG, "input configs");
 
+		if (!json.contains("result"))
+			return;
+
 		channels.clear();
 
 		for (auto &json_input : json["result"]) {
+			if (!json_input.contains("identifier") || !json_input.contains("name") ||
+			    !json_input.contains("localMixer") || !json_input.contains("streamMixer"))
+				continue;
+
 			std::string identifier = json_input["identifier"];
 
 			auto channel = channels[identifier] = new Channel{identifier = identifier};
-			//Channel *channel = ;getChannel(identifier);
 			channel->name = json_input["name"];
 
 			channel->muted[MixerType::LOCAL] = json_input["localMixer"][0];
@@ -148,7 +162,13 @@ public:
 	{
 		obs_log(LOG_DEBUG, "output config");
 
+		if (!json.contains("result"))
+			return;
+
 		auto result = json["result"];
+
+		if (!result.contains("localMixer") || !result.contains("streamMixer"))
+			return;
 
 		Mixer *localOutput = getOutput(MixerType::LOCAL);
 		Mixer *streamOutput = getOutput(MixerType::STREAM);

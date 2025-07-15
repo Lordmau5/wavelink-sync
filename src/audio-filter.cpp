@@ -22,6 +22,13 @@ const char *filter_get_name(void *)
 	return obs_module_text("WaveLinkSync.FilterName");
 }
 
+bool on_refresh_button_pressed(obs_properties_t *props, obs_property_t *property, void *data)
+{
+	WebSocketHandler::refreshInputsAndOutputs();
+
+	return false;
+}
+
 obs_properties_t *filter_get_properties(void *)
 {
 	obs_log(LOG_DEBUG, "+filter_get_properties(...)");
@@ -55,6 +62,11 @@ obs_properties_t *filter_get_properties(void *)
 	// Follow mixer mute
 	p = obs_properties_add_bool(props, "follow_mixer_mute", obs_module_text("WaveLinkSync.FollowMixerMute"));
 	obs_property_set_long_description(p, obs_module_text("WaveLinkSync.FollowMixerMute.Description"));
+
+	obs_properties_add_text(props, "refresh_button_text", obs_module_text("WaveLinkSync.RefreshButton.Description"),
+				OBS_TEXT_INFO);
+	obs_properties_add_button(props, "refresh_button", obs_module_text("WaveLinkSync.RefreshButton"),
+				  on_refresh_button_pressed);
 
 	obs_log(LOG_DEBUG, "-filter_get_properties(...)");
 	return props;
