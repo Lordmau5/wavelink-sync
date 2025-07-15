@@ -3,7 +3,6 @@
 #include <obs-module.h>
 #include <plugin-support.h>
 #include <nlohmann/json.hpp>
-#include <thread>
 
 #include <ixwebsocket/IXNetSystem.h>
 #include <ixwebsocket/IXWebSocket.h>
@@ -14,21 +13,24 @@
 
 enum MixerType { INVALID, LOCAL, STREAM };
 
-struct Input {
-	std::unordered_map<MixerType, bool> muted;
-	std::unordered_map<MixerType, int> volume;
-};
-
-struct Output {
+struct Mixer {
 	bool muted;
 	int volume;
+};
+
+struct Channel {
+	std::string identifier;
+	std::string name;
+
+	std::unordered_map<MixerType, bool> muted;
+	std::unordered_map<MixerType, int> volume;
 };
 
 class WebSocketHandler {
 private:
 	static inline ix::WebSocket webSocket;
-	static inline std::unordered_map<MixerType, Output *> mixers;
-	static inline std::unordered_map<std::string, Input *> channels;
+	static inline std::unordered_map<MixerType, Mixer *> mixers;
+	static inline std::unordered_map<std::string, Channel *> channels;
 
 	static inline int input_configs_id = 469;
 	static inline int output_config_id = 470;
@@ -88,42 +90,57 @@ public:
 		webSocket.send(json.dump());
 	}
 
-	static Input *getInput(std::string identifier)
+	static Channel *getChannel(std::string identifier)
 	{
-		if (!channels[identifier]) {
-			channels[identifier] = new Input();
-		}
+		if (!channels.count(identifier))
+			return nullptr;
 
 		return channels[identifier];
 	}
 
-	static Output *getOutput(MixerType mixer_type)
+	static Mixer *getOutput(MixerType mixer_type)
 	{
-		if (!mixers[mixer_type]) {
-			mixers[mixer_type] = new Output();
+		if (!mixers.count(mixer_type)) {
+			mixers[mixer_type] = new Mixer();
 		}
 
 		return mixers[mixer_type];
+	}
+
+	static std::vector<Channel *> getChannels()
+	{
+		std::vector<Channel *> channel_values;
+
+		for (auto it = channels.begin(); it != channels.end(); ++it) {
+			channel_values.push_back(it->second);
+		}
+
+		return channel_values;
 	}
 
 	static void handleInputConfigs(nlohmann::json json)
 	{
 		obs_log(LOG_DEBUG, "input configs");
 
+		channels.clear();
+
 		for (auto &json_input : json["result"]) {
 			std::string identifier = json_input["identifier"];
 
-			Input *input = getInput(identifier);
+			auto channel = channels[identifier] = new Channel{identifier = identifier};
+			//Channel *channel = ;getChannel(identifier);
+			channel->name = json_input["name"];
 
-			input->muted[MixerType::LOCAL] = json_input["localMixer"][0];
-			input->volume[MixerType::LOCAL] = json_input["localMixer"][1];
+			channel->muted[MixerType::LOCAL] = json_input["localMixer"][0];
+			channel->volume[MixerType::LOCAL] = json_input["localMixer"][1];
 
-			input->muted[MixerType::STREAM] = json_input["streamMixer"][0];
-			input->volume[MixerType::STREAM] = json_input["streamMixer"][1];
+			channel->muted[MixerType::STREAM] = json_input["streamMixer"][0];
+			channel->volume[MixerType::STREAM] = json_input["streamMixer"][1];
 
-			obs_log(LOG_DEBUG, "input, %d, %d, %d, %d - volumes size: %d", input->muted[MixerType::LOCAL],
-				input->volume[MixerType::LOCAL], input->muted[MixerType::STREAM],
-				input->volume[MixerType::STREAM], channels.size());
+			obs_log(LOG_DEBUG, "input, %s, %s, %d, %d, %d, %d - volumes size: %d",
+				channel->identifier.c_str(), channel->name.c_str(), channel->muted[MixerType::LOCAL],
+				channel->volume[MixerType::LOCAL], channel->muted[MixerType::STREAM],
+				channel->volume[MixerType::STREAM], channels.size());
 		}
 	}
 
@@ -133,8 +150,8 @@ public:
 
 		auto result = json["result"];
 
-		Output *localOutput = getOutput(MixerType::LOCAL);
-		Output *streamOutput = getOutput(MixerType::STREAM);
+		Mixer *localOutput = getOutput(MixerType::LOCAL);
+		Mixer *streamOutput = getOutput(MixerType::STREAM);
 
 		localOutput->muted = result["localMixer"][0];
 		localOutput->volume = result["localMixer"][1];
@@ -144,6 +161,126 @@ public:
 
 		obs_log(LOG_DEBUG, "outputs, %d, %d, %d, %d", localOutput->muted, localOutput->volume,
 			streamOutput->muted, streamOutput->volume);
+	}
+
+	static MixerType getMixerFromParams(nlohmann::json params)
+	{
+		MixerType mixerType = MixerType::INVALID;
+
+		if (!params.contains("mixerID"))
+			return mixerType;
+
+		std::string mixerID = params["mixerID"];
+		if (mixerID == "com.elgato.mix.microphoneFX")
+			return mixerType;
+
+		if (mixerID == "com.elgato.mix.local") {
+			mixerType = MixerType::LOCAL;
+		} else if (mixerID == "com.elgato.mix.stream") {
+			mixerType = MixerType::STREAM;
+		}
+
+		return mixerType;
+	}
+
+	static void handleOutputVolumeChanged(nlohmann::json params)
+	{
+		obs_log(LOG_DEBUG, "- outputVolumeChanged");
+
+		if (!params.contains("value"))
+			return;
+
+		MixerType mixerType = getMixerFromParams(params);
+		if (mixerType == MixerType::INVALID)
+			return;
+
+		int volume = params["value"];
+
+		Mixer *output = getOutput(mixerType);
+
+		output->volume = volume;
+
+		obs_log(LOG_DEBUG, "Output %d, Volume %d", mixerType, volume);
+	}
+
+	static void handleOutputMuteChanged(nlohmann::json params)
+	{
+		obs_log(LOG_DEBUG, "- outputMuteChanged");
+
+		if (!params.contains("value"))
+			return;
+
+		bool muted = params["value"];
+
+		MixerType mixerType = getMixerFromParams(params);
+		if (mixerType == MixerType::INVALID)
+			return;
+
+		Mixer *output = getOutput(mixerType);
+
+		output->muted = muted;
+
+		obs_log(LOG_DEBUG, "Output %d, %s", mixerType, muted ? "Muted" : "Unmuted");
+	}
+
+	static void handleInputVolumeChanged(nlohmann::json params)
+	{
+		obs_log(LOG_DEBUG, "- inputVolumeChanged");
+
+		if (!params.contains("identifier") || !params.contains("value"))
+			return;
+
+		std::string identifier = params["identifier"];
+
+		int volume = params["value"];
+
+		MixerType mixerType = getMixerFromParams(params);
+		if (mixerType == MixerType::INVALID)
+			return;
+
+		updateFilterVolume(identifier, mixerType, volume);
+
+		obs_log(LOG_DEBUG, "%s, %d, Volume: %d", identifier.c_str(), mixerType, volume);
+	}
+
+	static void handleInputMuteChanged(nlohmann::json params)
+	{
+		obs_log(LOG_DEBUG, "- inputMuteChanged");
+
+		if (!params.contains("identifier") || !params.contains("value"))
+			return;
+
+		std::string identifier = params["identifier"];
+
+		bool muted = params["value"];
+
+		MixerType mixerType = getMixerFromParams(params);
+		if (mixerType == MixerType::INVALID)
+			return;
+
+		updateFilterMuted(identifier, mixerType, muted);
+
+		obs_log(LOG_DEBUG, "%s, %d, %s", identifier.c_str(), mixerType, muted ? "Muted" : "Unmuted");
+	}
+
+	static void handleInputNameChanged(nlohmann::json params)
+	{
+		obs_log(LOG_DEBUG, "- inputNameChanged");
+
+		if (!params.contains("identifier") || !params.contains("value"))
+			return;
+
+		std::string identifier = params["identifier"];
+
+		std::string name = params["value"];
+
+		Channel *channel = getChannel(identifier);
+		if (!channel)
+			return;
+
+		channel->name = name;
+
+		obs_log(LOG_DEBUG, "%s, %s", identifier.c_str(), name.c_str());
 	}
 
 	static void handleWebsocketMessage(std::string text)
@@ -159,85 +296,54 @@ public:
 			return;
 		}
 
-		if (!json.contains("params") || !json.contains("method"))
+		if (!json.contains("method"))
 			return;
 
 		auto method = json["method"];
-		auto params = json["params"];
-
-		if (!params.contains("value") || !params.contains("mixerID"))
-			return;
-
-		std::string mixerID = params["mixerID"];
-		if (mixerID == "com.elgato.mix.microphoneFX")
-			return;
-
-		MixerType mixerType = MixerType::INVALID;
-		if (mixerID == "com.elgato.mix.local") {
-			mixerType = MixerType::LOCAL;
-		} else if (mixerID == "com.elgato.mix.stream") {
-			mixerType = MixerType::STREAM;
+		if (method == "inputsChanged") {
+			sendGetInputConfigsMessage();
 		}
 
+		if (!json.contains("params"))
+			return;
+
+		auto params = json["params"];
+
 		if (method == "outputVolumeChanged") {
-			int volume = params["value"];
-
-			Output *output = getOutput(mixerType);
-
-			output->volume = volume;
-
-			obs_log(LOG_DEBUG, "Output, Volume %d", mixerID.c_str(), volume);
+			handleOutputVolumeChanged(params);
 		} else if (method == "outputMuteChanged") {
-			bool muted = params["value"];
-
-			Output *output = getOutput(mixerType);
-
-			output->muted = muted;
-
-			obs_log(LOG_DEBUG, "Output, %s", mixerID.c_str(), muted ? "Muted" : "Unmuted");
+			handleOutputMuteChanged(params);
 		} else if (method == "inputVolumeChanged") {
-			if (!params.contains("identifier"))
-				return;
-
-			int volume = params["value"];
-
-			std::string identifier = params["identifier"];
-
-			updateFilterVolume(identifier, mixerType, volume);
-
-			obs_log(LOG_DEBUG, "%s, %d, Volume: %d", identifier.c_str(), mixerType, volume);
+			handleInputVolumeChanged(params);
 		} else if (method == "inputMuteChanged") {
-			if (!params.contains("identifier"))
-				return;
-
-			bool muted = params["value"];
-
-			std::string identifier = params["identifier"];
-
-			updateFilterMuted(identifier, mixerType, muted);
-
-			obs_log(LOG_DEBUG, "%s, %d, %s", identifier.c_str(), mixerType, muted ? "Muted" : "Unmuted");
+			handleInputMuteChanged(params);
+		} else if (method == "inputNameChanged") {
+			handleInputNameChanged(params);
 		}
 	}
 
 	static void updateFilterVolume(std::string identifier, MixerType mixer_type, int volume)
 	{
-		Input *input = getInput(identifier);
+		Channel *channel = getChannel(identifier);
+		if (!channel)
+			return;
 
-		input->volume[mixer_type] = volume;
+		channel->volume[mixer_type] = volume;
 	}
 
 	static void updateFilterMuted(std::string identifier, MixerType mixer_type, bool muted)
 	{
-		Input *input = getInput(identifier);
+		Channel *channel = getChannel(identifier);
+		if (!channel)
+			return;
 
-		input->muted[mixer_type] = muted;
+		channel->muted[mixer_type] = muted;
 	}
 
 	static int getMixerVolumeForFilter(filter_t *filter)
 	{
 		MixerType mixer_type = static_cast<MixerType>(filter->mixer_type);
-		Output *output = getOutput(mixer_type);
+		Mixer *output = getOutput(mixer_type);
 
 		if (!filter->apply_mixer_volume) {
 			return 100;
@@ -252,13 +358,19 @@ public:
 
 	static int getChannelVolumeForFilter(filter_t *filter)
 	{
-		Input *input = getInput(filter->channel);
+		if (filter->channel == "None")
+			return 100;
+
+		Channel *channel = getChannel(filter->channel);
+		if (!channel)
+			return 100;
+
 		MixerType mixer_type = static_cast<MixerType>(filter->mixer_type);
 
-		if (filter->follow_channel_mute && input->muted[mixer_type]) {
+		if (filter->follow_channel_mute && channel->muted[mixer_type]) {
 			return 0;
 		}
 
-		return input->volume[mixer_type];
+		return channel->volume[mixer_type];
 	}
 };

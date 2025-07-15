@@ -30,14 +30,11 @@ obs_properties_t *filter_get_properties(void *)
 	obs_property_t *channel_list = obs_properties_add_list(props, "channel",
 							       obs_module_text("WaveLinkSync.ChannelSelection"),
 							       OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING);
-	obs_property_list_add_string(channel_list, "Game", "Wave Link Game");
-	obs_property_list_add_string(channel_list, "Music", "Wave Link Music");
-	obs_property_list_add_string(channel_list, "Browser", "Wave Link Browser");
-	obs_property_list_add_string(channel_list, "Voice Chat", "Wave Link Voice Chat");
-	obs_property_list_add_string(channel_list, "System", "Wave Link System");
-	obs_property_list_add_string(channel_list, "SFX", "Wave Link SFX");
-	obs_property_list_add_string(channel_list, "Aux 1", "Wave Link Aux 1");
-	obs_property_list_add_string(channel_list, "Aux 2", "Wave Link Aux 2");
+	obs_property_list_add_string(channel_list, "None", "None");
+
+	for (auto channel : WebSocketHandler::getChannels()) {
+		obs_property_list_add_string(channel_list, channel->name.c_str(), channel->identifier.c_str());
+	}
 
 	obs_property_t *mixer_list = obs_properties_add_list(props, "mixer_type",
 							     obs_module_text("WaveLinkSync.MixerSelection"),
@@ -67,7 +64,7 @@ void filter_get_defaults(obs_data_t *defaults)
 {
 	obs_log(LOG_DEBUG, "+filter_get_defaults(...)");
 
-	obs_data_set_default_string(defaults, "channel", "Wave Link Music");
+	obs_data_set_default_string(defaults, "channel", "None");
 	obs_data_set_default_int(defaults, "mixer_type", 1);
 
 	obs_data_set_default_bool(defaults, "follow_channel_mute", true);
