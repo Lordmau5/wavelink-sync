@@ -39,13 +39,12 @@ public:
 	static void initialize()
 	{
 		srand((unsigned int)time(NULL));
-		input_configs_id = rand() % 420 + 69;
-		output_config_id = rand() % 420 + 69;
 
 		ix::initNetSystem();
 
 		std::string url("ws://localhost:1824");
 		webSocket.setUrl(url);
+		webSocket.setMaxWaitBetweenReconnectionRetries(3);
 
 		obs_log(LOG_INFO, "Attempting to connect to WebSocket...");
 
@@ -70,6 +69,34 @@ public:
 		webSocket.start();
 	}
 
+	static std::string getWebsocketStatus()
+	{
+		std::string status("WebSocket: ");
+
+		switch (webSocket.getReadyState()) {
+		case ix::ReadyState::Closed: {
+			status.append("Disconnected");
+			break;
+		}
+		case ix::ReadyState::Closing: {
+			status.append("Closing...");
+			break;
+		}
+		case ix::ReadyState::Connecting: {
+			status.append("Connecting...");
+			break;
+		}
+		case ix::ReadyState::Open: {
+			status.append("Connected");
+			break;
+		}
+		}
+
+		return status;
+	}
+
+	static int getRandomID() { return rand() % 420 + 69; }
+
 	static void refreshInputsAndOutputs()
 	{
 		obs_log(LOG_INFO, "Refreshing inputs and outputs");
@@ -80,6 +107,8 @@ public:
 
 	static void sendGetInputConfigsMessage()
 	{
+		input_configs_id = getRandomID();
+
 		auto json = nlohmann::json();
 		json["jsonrpc"] = "2.0";
 		json["method"] = "getInputConfigs";
@@ -90,6 +119,8 @@ public:
 
 	static void sendGetOutputConfigMessage()
 	{
+		output_config_id = getRandomID();
+
 		auto json = nlohmann::json();
 		json["jsonrpc"] = "2.0";
 		json["method"] = "getOutputConfig";

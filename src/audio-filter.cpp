@@ -68,6 +68,9 @@ obs_properties_t *filter_get_properties(void *)
 	obs_properties_add_button(props, "refresh_button", obs_module_text("WaveLinkSync.RefreshButton"),
 				  on_refresh_button_pressed);
 
+	obs_properties_add_text(props, "websocket_status", WebSocketHandler::getWebsocketStatus().c_str(),
+				OBS_TEXT_INFO);
+
 	obs_log(LOG_DEBUG, "-filter_get_properties(...)");
 	return props;
 }
