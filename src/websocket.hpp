@@ -11,7 +11,7 @@
 
 #include <audio-filter.h>
 
-enum MixerType { INVALID, LOCAL, STREAM };
+enum MixerType { INVALID, LOCAL, STREAM, EITHER = 100 };
 
 struct Mixer {
 	bool muted;
@@ -101,6 +101,13 @@ public:
 	{
 		obs_log(LOG_INFO, "Refreshing inputs and outputs");
 
+		if (webSocket.getReadyState() != ix::ReadyState::Open) {
+			// TODO: Error popup that the socket isn't connected?
+			/*OBSMessageBox::critical(this, QTStr("Error"),
+						QTStr("Failed to create directory '%1'").arg(path));*/
+			return;
+		}
+
 		sendGetInputConfigsMessage();
 		sendGetOutputConfigMessage();
 	}
@@ -144,6 +151,38 @@ public:
 		}
 
 		return mixers[mixer_type];
+	}
+
+	static bool getMixerMutedStatus(MixerType mixer_type)
+	{
+		if (mixer_type == MixerType::EITHER) {
+			for (auto &mixer : mixers) {
+				if (mixer.second->muted) {
+					return true;
+				}
+			}
+			return false;
+		}
+
+		if (!mixers.count(mixer_type)) {
+			mixers[mixer_type] = new Mixer();
+		}
+
+		return mixers[mixer_type]->muted;
+	}
+
+	static bool getChannelMutedStatus(Channel *channel, MixerType mixer_type)
+	{
+		if (mixer_type == MixerType::EITHER) {
+			for (auto &[mixer, status] : channel->muted) {
+				if (status) {
+					return true;
+				}
+			}
+			return false;
+		}
+
+		return channel->muted[mixer_type];
 	}
 
 	static std::vector<Channel *> getChannels()
@@ -393,17 +432,17 @@ public:
 
 	static int getMixerVolumeForFilter(filter_t *filter)
 	{
-		MixerType volume_mixer_type = static_cast<MixerType>(filter->volume_mixer_type);
-		Mixer *volume_output = getOutput(volume_mixer_type);
+		MixerType apply_mixer_volume_type = static_cast<MixerType>(filter->apply_mixer_volume_type);
+		Mixer *volume_output = getOutput(apply_mixer_volume_type);
 
-		MixerType muted_mixer_type = static_cast<MixerType>(filter->muted_mixer_type);
-		Mixer *muted_output = getOutput(muted_mixer_type);
+		MixerType follow_mixer_mute_type = static_cast<MixerType>(filter->follow_mixer_mute_type);
+		bool muted = getMixerMutedStatus(follow_mixer_mute_type);
 
 		if (!filter->apply_mixer_volume) {
 			return 100;
 		}
 
-		if (filter->follow_mixer_mute && muted_output->muted) {
+		if (filter->follow_mixer_mute && muted) {
 			return 0;
 		}
 
@@ -420,9 +459,11 @@ public:
 			return 100;
 
 		MixerType volume_mixer_type = static_cast<MixerType>(filter->volume_mixer_type);
-		MixerType muted_mixer_type = static_cast<MixerType>(filter->muted_mixer_type);
 
-		if (filter->follow_channel_mute && channel->muted[muted_mixer_type]) {
+		MixerType channel_mixer_mute_type = static_cast<MixerType>(filter->channel_mixer_mute_type);
+		bool muted = getChannelMutedStatus(channel, channel_mixer_mute_type);
+
+		if (filter->follow_channel_mute && muted) {
 			return 0;
 		}
 

@@ -10,9 +10,13 @@ typedef struct {
 
 	std::string channel;
 	int volume_mixer_type;
-	int muted_mixer_type;
 
 	bool follow_channel_mute;
+	int channel_mixer_mute_type;
+
 	bool apply_mixer_volume;
+	int apply_mixer_volume_type;
+
 	bool follow_mixer_mute;
+	int follow_mixer_mute_type;
 } filter_t;

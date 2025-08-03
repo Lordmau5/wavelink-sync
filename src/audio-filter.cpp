@@ -29,7 +29,21 @@ bool on_refresh_button_pressed(obs_properties_t *props, obs_property_t *property
 	return false;
 }
 
-obs_properties_t *filter_get_properties(void *)
+bool update_visibility_states_callback(void *data, obs_properties_t *props, obs_property_t *, obs_data_t *settings)
+{
+	if (!data)
+		return false;
+
+	auto filter = (filter_t *)data;
+
+	obs_property_set_visible(obs_properties_get(props, "channel_mixer_mute_type"), filter->follow_channel_mute);
+	obs_property_set_visible(obs_properties_get(props, "apply_mixer_volume_type"), filter->apply_mixer_volume);
+	obs_property_set_visible(obs_properties_get(props, "follow_mixer_mute_type"), filter->follow_mixer_mute);
+
+	return true;
+}
+
+obs_properties_t *filter_get_properties(void *data)
 {
 	obs_log(LOG_DEBUG, "+filter_get_properties(...)");
 	obs_properties_t *props = obs_properties_create();
@@ -52,34 +66,66 @@ obs_properties_t *filter_get_properties(void *)
 	obs_property_set_long_description(volume_mixer_list,
 					  obs_module_text("WaveLinkSync.VolumeMixerSelection.Description"));
 
-	obs_property_t *muted_mixer_list = obs_properties_add_list(props, "muted_mixer_type",
+	// Follow channel mute depending on mixer (Monitor Mix or Stream Mix)
+	obs_property_t *follow_channel_mute = obs_properties_add_bool(
+		props, "follow_channel_mute", obs_module_text("WaveLinkSync.FollowChannelMute"));
+	obs_property_set_long_description(follow_channel_mute,
+					  obs_module_text("WaveLinkSync.FollowChannelMute.Description"));
+
+	obs_property_set_modified_callback2(follow_channel_mute, update_visibility_states_callback, data);
+
+	obs_property_t *muted_mixer_list = obs_properties_add_list(props, "channel_mixer_mute_type",
 								   obs_module_text("WaveLinkSync.MutedMixerSelection"),
 								   OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
 	obs_property_list_add_int(muted_mixer_list, "Monitor Mix", 1);
 	obs_property_list_add_int(muted_mixer_list, "Stream Mix", 2);
+	obs_property_list_add_int(muted_mixer_list, "Either", 100);
 
 	obs_property_set_long_description(muted_mixer_list,
 					  obs_module_text("WaveLinkSync.MutedMixerSelection.Description"));
 
-	obs_property_t *p;
-
-	// Follow channel mute depending on mixer (Monitor Mix or Stream Mix)
-	p = obs_properties_add_bool(props, "follow_channel_mute", obs_module_text("WaveLinkSync.FollowChannelMute"));
-	obs_property_set_long_description(p, obs_module_text("WaveLinkSync.FollowChannelMute.Description"));
-
 	// Apply mixer volume
-	p = obs_properties_add_bool(props, "apply_mixer_volume", obs_module_text("WaveLinkSync.ApplyMixerVolume"));
-	obs_property_set_long_description(p, obs_module_text("WaveLinkSync.ApplyMixerVolume.Description"));
+	obs_property_t *apply_mixer_volume =
+		obs_properties_add_bool(props, "apply_mixer_volume", obs_module_text("WaveLinkSync.ApplyMixerVolume"));
+	obs_property_set_long_description(apply_mixer_volume,
+					  obs_module_text("WaveLinkSync.ApplyMixerVolume.Description"));
+
+	obs_property_set_modified_callback2(apply_mixer_volume, update_visibility_states_callback, data);
+
+	obs_property_t *apply_mixer_volume_list = obs_properties_add_list(
+		props, "apply_mixer_volume_type", obs_module_text("WaveLinkSync.ApplyMixerVolumeSelection"),
+		OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
+	obs_property_list_add_int(apply_mixer_volume_list, "Monitor Mix", 1);
+	obs_property_list_add_int(apply_mixer_volume_list, "Stream Mix", 2);
+
+	obs_property_set_long_description(apply_mixer_volume_list,
+					  obs_module_text("WaveLinkSync.ApplyMixerVolumeSelection.Description"));
 
 	// Follow mixer mute
-	p = obs_properties_add_bool(props, "follow_mixer_mute", obs_module_text("WaveLinkSync.FollowMixerMute"));
-	obs_property_set_long_description(p, obs_module_text("WaveLinkSync.FollowMixerMute.Description"));
+	obs_property_t *follow_mixer_mute =
+		obs_properties_add_bool(props, "follow_mixer_mute", obs_module_text("WaveLinkSync.FollowMixerMute"));
+	obs_property_set_long_description(follow_mixer_mute,
+					  obs_module_text("WaveLinkSync.FollowMixerMute.Description"));
 
+	obs_property_set_modified_callback2(follow_mixer_mute, update_visibility_states_callback, data);
+
+	obs_property_t *follow_mixer_mute_list = obs_properties_add_list(
+		props, "follow_mixer_mute_type", obs_module_text("WaveLinkSync.FollowMixerMuteSelection"),
+		OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
+	obs_property_list_add_int(follow_mixer_mute_list, "Monitor Mix", 1);
+	obs_property_list_add_int(follow_mixer_mute_list, "Stream Mix", 2);
+	obs_property_list_add_int(follow_mixer_mute_list, "Either", 100);
+
+	obs_property_set_long_description(follow_mixer_mute_list,
+					  obs_module_text("WaveLinkSync.FollowMixerMuteSelection.Description"));
+
+	// Refresh button
 	obs_properties_add_text(props, "refresh_button_text", obs_module_text("WaveLinkSync.RefreshButton.Description"),
 				OBS_TEXT_INFO);
 	obs_properties_add_button(props, "refresh_button", obs_module_text("WaveLinkSync.RefreshButton"),
 				  on_refresh_button_pressed);
 
+	// Websocket status
 	obs_properties_add_text(props, "websocket_status", WebSocketHandler::getWebsocketStatus().c_str(),
 				OBS_TEXT_INFO);
 
@@ -93,11 +139,15 @@ void filter_get_defaults(obs_data_t *defaults)
 
 	obs_data_set_default_string(defaults, "channel", "None");
 	obs_data_set_default_int(defaults, "volume_mixer_type", 1);
-	obs_data_set_default_int(defaults, "muted_mixer_type", 1);
 
 	obs_data_set_default_bool(defaults, "follow_channel_mute", true);
+	obs_data_set_default_int(defaults, "channel_mixer_mute_type", 1);
+
 	obs_data_set_default_bool(defaults, "apply_mixer_volume", true);
+	obs_data_set_default_int(defaults, "apply_mixer_volume_type", 1);
+
 	obs_data_set_default_bool(defaults, "follow_mixer_mute", true);
+	obs_data_set_default_int(defaults, "follow_mixer_mute_type", 1);
 
 	obs_log(LOG_DEBUG, "-filter_get_defaults(...)");
 }
@@ -111,19 +161,27 @@ void filter_update(void *data, obs_data_t *settings)
 
 	auto channel = obs_data_get_string(settings, "channel");
 	auto volume_mixer_type = (int)obs_data_get_int(settings, "volume_mixer_type");
-	auto muted_mixer_type = (int)obs_data_get_int(settings, "muted_mixer_type");
 
 	auto follow_channel_mute = obs_data_get_bool(settings, "follow_channel_mute");
+	auto channel_mixer_mute_type = (int)obs_data_get_int(settings, "channel_mixer_mute_type");
+
 	auto apply_mixer_volume = obs_data_get_bool(settings, "apply_mixer_volume");
+	auto apply_mixer_volume_type = (int)obs_data_get_int(settings, "apply_mixer_volume_type");
+
 	auto follow_mixer_mute = obs_data_get_bool(settings, "follow_mixer_mute");
+	auto follow_mixer_mute_type = (int)obs_data_get_int(settings, "follow_mixer_mute_type");
 
 	filter->channel = std::string(channel);
 	filter->volume_mixer_type = volume_mixer_type;
-	filter->muted_mixer_type = muted_mixer_type;
 
 	filter->follow_channel_mute = follow_channel_mute;
+	filter->channel_mixer_mute_type = channel_mixer_mute_type;
+
 	filter->apply_mixer_volume = apply_mixer_volume;
+	filter->apply_mixer_volume_type = apply_mixer_volume_type;
+
 	filter->follow_mixer_mute = follow_mixer_mute;
+	filter->follow_mixer_mute_type = follow_mixer_mute_type;
 
 	obs_log(LOG_DEBUG, "-filter_update");
 }
